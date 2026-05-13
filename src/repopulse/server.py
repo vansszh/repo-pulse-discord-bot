@@ -1,13 +1,3 @@
-"""FastAPI webhook server for GitHub deliveries.
-
-Responsibilities:
-
-* Expose ``POST /github/webhook`` for GitHub to deliver events to.
-* Verify each delivery's HMAC-SHA256 signature.
-* Hand parsed payloads to :class:`repopulse.dispatcher.EventDispatcher`.
-* Provide simple ``GET /health`` and ``GET /`` endpoints.
-"""
-
 from __future__ import annotations
 
 import json
@@ -26,11 +16,11 @@ logger = logging.getLogger(__name__)
 
 
 def create_app(settings: Settings, dispatcher: EventDispatcher) -> FastAPI:
-    """Build the FastAPI application."""
+    # Hiding the OpenAPI endpoints — this service only exists to receive GitHub webhooks.
     app = FastAPI(
         title="RepoPulse Webhook Server",
         version=__version__,
-        docs_url=None,       # no public API docs — this endpoint is for GitHub only
+        docs_url=None,
         redoc_url=None,
         openapi_url=None,
     )
@@ -57,25 +47,15 @@ def create_app(settings: Settings, dispatcher: EventDispatcher) -> FastAPI:
                 "Rejected webhook delivery %s (event=%s) — bad signature.",
                 x_github_delivery, x_github_event,
             )
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid signature.",
-            )
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid signature.")
 
         if not x_github_event:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Missing X-GitHub-Event header.",
-            )
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Missing X-GitHub-Event header.")
 
         try:
             payload: dict[str, Any] = json.loads(raw.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            logger.warning("Malformed webhook payload: %s", exc)
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Body is not valid JSON.",
-            ) from exc
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Body is not valid JSON.") from exc
 
         logger.info(
             "Webhook accepted: event=%s delivery=%s action=%s repo=%s",

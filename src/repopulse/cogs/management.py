@@ -1,8 +1,3 @@
-"""Server-management slash commands.
-
-All commands here require the Discord **Manage Server** permission.
-"""
-
 from __future__ import annotations
 
 import logging
@@ -22,13 +17,9 @@ ReminderMode = Literal["enable", "disable"]
 
 
 class ManagementCog(commands.Cog):
-    """Repository linking, channel routing, and reminder toggles."""
-
     def __init__(self, bot: commands.Bot, db: Database) -> None:
         self.bot = bot
         self.db = db
-
-    # -- /link-repo -----------------------------------------------------------
 
     @app_commands.command(
         name="link-repo",
@@ -36,7 +27,7 @@ class ManagementCog(commands.Cog):
     )
     @app_commands.describe(
         repo="owner/repository — e.g. octocat/hello-world",
-        channel="Default channel for this repo's events (optional, defaults to current channel).",
+        channel="Default channel for this repo's events (defaults to the current channel).",
     )
     @app_commands.default_permissions(manage_guild=True)
     @app_commands.guild_only()
@@ -52,25 +43,20 @@ class ManagementCog(commands.Cog):
             await interaction.response.send_message(f"❌ {exc}", ephemeral=True)
             return
 
-        assert interaction.guild_id is not None  # enforced by guild_only
-        target_channel = channel or (
+        assert interaction.guild_id is not None
+        target = channel or (
             interaction.channel if isinstance(interaction.channel, discord.TextChannel) else None
         )
-        channel_id = target_channel.id if target_channel else None
+        channel_id = target.id if target else None
 
         await self.db.upsert_guild(interaction.guild_id, default_channel_id=channel_id)
         await self.db.link_repo(interaction.guild_id, owner, name, channel_id=channel_id)
 
         msg = f"✅ Linked **{owner}/{name}**"
-        if target_channel:
-            msg += f" → {target_channel.mention}"
-        msg += (
-            "\n\nNow add a GitHub webhook pointing at this bot's "
-            "`/github/webhook` endpoint (see the README)."
-        )
+        if target:
+            msg += f" → {target.mention}"
+        msg += "\n\nNow point a GitHub webhook at this bot's `/github/webhook` endpoint (see README)."
         await interaction.response.send_message(msg, ephemeral=True)
-
-    # -- /unlink-repo ---------------------------------------------------------
 
     @app_commands.command(
         name="unlink-repo",
@@ -87,17 +73,12 @@ class ManagementCog(commands.Cog):
             return
 
         assert interaction.guild_id is not None
-        removed = await self.db.unlink_repo(interaction.guild_id, owner, name)
-        if removed:
-            await interaction.response.send_message(
-                f"🗑️ Unlinked **{owner}/{name}**.", ephemeral=True
-            )
+        if await self.db.unlink_repo(interaction.guild_id, owner, name):
+            await interaction.response.send_message(f"🗑️ Unlinked **{owner}/{name}**.", ephemeral=True)
         else:
             await interaction.response.send_message(
                 f"ℹ️ **{owner}/{name}** was not linked here.", ephemeral=True
             )
-
-    # -- /list-repos ----------------------------------------------------------
 
     @app_commands.command(
         name="list-repos",
@@ -115,11 +96,10 @@ class ManagementCog(commands.Cog):
             )
             return
 
-        lines: list[str] = []
-        for r in repos:
-            channel_ref = f"<#{r.channel_id}>" if r.channel_id else "_(no default channel)_"
-            lines.append(f"• **{r.full_name}** → {channel_ref}")
-
+        lines = [
+            f"• **{r.full_name}** → {f'<#{r.channel_id}>' if r.channel_id else '_(no default channel)_'}"
+            for r in repos
+        ]
         embed = discord.Embed(
             title="Linked repositories",
             description=truncate("\n".join(lines), 4000),
@@ -127,8 +107,6 @@ class ManagementCog(commands.Cog):
         )
         embed.set_footer(text=f"{len(repos)} repo(s) linked")
         await interaction.response.send_message(embed=embed, ephemeral=True)
-
-    # -- /set-channel ---------------------------------------------------------
 
     @app_commands.command(
         name="set-channel",
@@ -154,24 +132,17 @@ class ManagementCog(commands.Cog):
             await interaction.response.send_message(f"❌ {exc}", ephemeral=True)
             return
         if event not in EVENT_CATEGORIES:
-            await interaction.response.send_message(
-                f"❌ Unknown event `{event}`.", ephemeral=True
-            )
+            await interaction.response.send_message(f"❌ Unknown event `{event}`.", ephemeral=True)
             return
 
         assert interaction.guild_id is not None
-        # Auto-link the repo if not already linked, so /set-channel is a
-        # single-step workflow.
+        # Auto-link if needed so /set-channel works as a single step.
         await self.db.link_repo(interaction.guild_id, owner, name)
-        await self.db.set_channel_route(
-            interaction.guild_id, owner, name, event, channel.id
-        )
+        await self.db.set_channel_route(interaction.guild_id, owner, name, event, channel.id)
         await interaction.response.send_message(
             f"✅ **{owner}/{name}** → `{event}` events now go to {channel.mention}.",
             ephemeral=True,
         )
-
-    # -- /review-reminder -----------------------------------------------------
 
     @app_commands.command(
         name="review-reminder",

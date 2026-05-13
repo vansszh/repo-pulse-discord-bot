@@ -1,278 +1,94 @@
 # RepoPulse
 
-A modern open-source Discord bot that connects GitHub collaboration directly into Discord servers.
+A small Discord bot that posts GitHub repository activity (issues, PRs, reviews, pushes, releases, CI runs) into Discord channels as clean embeds.
 
-RepoPulse transforms Discord into a lightweight developer collaboration hub by syncing GitHub repository activity in real time. Instead of constantly checking GitHub for updates, contributors and maintainers can receive clean, structured notifications for issues, pull requests, reviews, deployments, and repository events directly inside their Discord channels.
+Built because most GitHub→Discord integrations I've tried are either too noisy, too ugly, or too painful to self-host.
 
-The bot is designed specifically for open-source communities, development teams, startup projects, and programming servers that want better visibility into repository activity without relying on bloated enterprise tools or noisy integrations.
+## What it does
 
----
+- Listens to GitHub webhooks and forwards events to Discord.
+- One bot process serves many servers — each server links its own repos.
+- Different event types can go to different channels (issues → `#issues`, PRs → `#pull-requests`, etc.).
+- Posts a reminder when a PR sits unreviewed for too long.
 
-## Core Purpose
+Supported events: `issues`, `pull_request`, `pull_request_review`, `push`, `release`, `workflow_run`.
 
-Most GitHub-to-Discord integrations are either:
-
-* too basic
-* too noisy
-* poorly formatted
-* difficult to self-host
-* overloaded with unnecessary features
-
-RepoPulse focuses on one thing:
-
-> Delivering clean, actionable GitHub collaboration workflows inside Discord.
-
-The project prioritizes:
-
-* simplicity
-* developer experience
-* extensibility
-* modern UI embeds
-* self-hosting support
-* open-source friendliness
-
----
-
-## Features
-
-### Real-Time GitHub Event Tracking
-
-RepoPulse listens to GitHub webhooks and instantly forwards important repository events to Discord.
-
-Supported events include:
-
-* issue opened / closed / reopened
-* pull request opened / merged / closed
-* draft PR marked ready for review
-* pull request review submitted
-* commits pushed
-* releases published
-* workflow / build status updates
-
-### Beautiful Discord Embeds
-
-Every GitHub event is rendered as a clean, readable Discord embed with:
-
-* repository information
-* author details
-* labels
-* PR status
-* changed file counts
-* direct GitHub links
-* timestamps
-* reviewer mentions
-
-The goal is to make GitHub activity readable at a glance without overwhelming channels with clutter.
-
-### Slash Command Management
-
-Manage linked repositories directly from Discord using slash commands.
+## Slash commands
 
 ```
-/link-repo           repo:owner/repository
-/unlink-repo         repo:owner/repository
+/link-repo        repo:owner/name [channel:#chan]
+/unlink-repo      repo:owner/name
 /list-repos
-/set-channel         event:issues    channel:#issues
-/set-channel         event:pulls     channel:#pull-requests
-/review-reminder     mode:enable
+/set-channel      repo:owner/name event:<issues|pulls|reviews|pushes|releases|ci> channel:#chan
+/review-reminder  mode:<enable|disable>
 /ping
 /help-repopulse
 ```
 
-### Pull Request Review Reminders
+Management commands require the **Manage Server** permission.
 
-Automatically notify reviewers when pull requests remain inactive for too long.
+## Stack
 
-* PR opened more than N hours ago
-* no reviews submitted yet
-* bot posts a reminder in the configured review channel
+- `discord.py` 2.x
+- `FastAPI` + `uvicorn` for webhooks
+- `aiosqlite` for storage
+- `pydantic-settings` for config
+- `pytest` / `ruff`
 
-This helps maintainers reduce stale pull requests and improve contributor response times.
+Python 3.11+.
 
-### Smart Repository Routing
+## Setup
 
-Different repository event types can be routed into different Discord channels, per linked repository.
+1. **Discord** — create an app at <https://discord.com/developers/applications>, add a bot, copy the token. Invite URL needs `bot` and `applications.commands` scopes.
+2. **GitHub webhook** — on the repo: Settings → Webhooks → Add webhook.
+   - Payload URL: `https://your-host/github/webhook`
+   - Content type: `application/json`
+   - Secret: any random string (use the same value for `GITHUB_WEBHOOK_SECRET`)
+   - Events: pick what you want, or "Send me everything".
+3. **Env** — copy `.env.example` to `.env` and fill in at least `DISCORD_BOT_TOKEN` and `GITHUB_WEBHOOK_SECRET`.
 
-```
-#issues           → bug reports and issue activity
-#pull-requests    → code reviews
-#ci-status        → GitHub Actions / workflow results
-#releases         → new version announcements
-```
-
-This keeps developer communities organized and reduces notification noise.
-
-### Self-Host Friendly
-
-RepoPulse is designed for easy deployment and self-hosting.
-
-Supported deployment methods:
-
-* Docker
-* Docker Compose
-* plain Python 3.11+ runtime
-* VPS hosting
-* Railway, Render, Fly.io
-
-Minimal setup should be possible in minutes.
-
-### Permission System
-
-Repository management commands are restricted to users with the Discord **Manage Server** permission. This prevents unauthorized repository linking or configuration changes.
-
----
-
-## Technical Overview
-
-RepoPulse uses GitHub webhooks to receive real-time repository events and forwards them through the Discord API using structured embeds.
-
-```
-GitHub Webhooks
-        ↓
-FastAPI webhook server   (HMAC-SHA256 signature verified)
-        ↓
-Event dispatcher         (routes by X-GitHub-Event + action)
-        ↓
-Embed builders           (render pretty Discord embeds)
-        ↓
-Discord bot client       (discord.py)
-        ↓
-Discord channels         (per-repo, per-event-type routing)
-```
-
-### Stack
-
-| Layer              | Library                                    |
-| ------------------ | ------------------------------------------ |
-| Discord client     | [`discord.py`](https://discordpy.readthedocs.io) 2.x |
-| Webhook server     | [`FastAPI`](https://fastapi.tiangolo.com) + `uvicorn` |
-| Persistence        | SQLite via `aiosqlite`                     |
-| Config             | `pydantic-settings` + `python-dotenv`      |
-| HTTP               | `httpx`                                    |
-| Tests              | `pytest` + `pytest-asyncio`                |
-
----
-
-## Getting Started
-
-### 1. Create a Discord application
-
-1. Go to <https://discord.com/developers/applications> and create a new application.
-2. Add a **Bot** to the application and copy the **Bot Token**.
-3. Enable the `applications.commands` and `bot` scopes when generating an invite URL.
-4. Invite the bot to your server.
-
-### 2. Create a GitHub webhook
-
-On your repository → **Settings → Webhooks → Add webhook**:
-
-| Field         | Value                                                                |
-| ------------- | -------------------------------------------------------------------- |
-| Payload URL   | `https://your-host/github/webhook`                                   |
-| Content type  | `application/json`                                                   |
-| Secret        | a strong random string (also set as `GITHUB_WEBHOOK_SECRET`)         |
-| Events        | *Send me everything*, or pick: Issues, Pull requests, Pull request reviews, Pushes, Releases, Workflow runs |
-
-### 3. Configure environment
-
-Copy `.env.example` to `.env` and fill in the values:
-
-```env
-DISCORD_BOT_TOKEN=...
-GITHUB_WEBHOOK_SECRET=...
-WEBHOOK_HOST=0.0.0.0
-WEBHOOK_PORT=8000
-DATABASE_PATH=./data/repopulse.db
-LOG_LEVEL=INFO
-REVIEW_REMINDER_HOURS=24
-```
-
-### 4. Run locally
+## Run
 
 ```bash
 python -m venv .venv
-.\.venv\Scripts\Activate.ps1     # Windows PowerShell
+.\.venv\Scripts\Activate.ps1     # or: source .venv/bin/activate
 pip install -r requirements.txt
 python -m repopulse
 ```
 
-### 5. Run with Docker
+Or with Docker:
 
 ```bash
 docker compose up --build
 ```
 
----
+## How routing picks a channel
 
-## Usage
+For a given event, RepoPulse picks the channel in this order:
 
-In any Discord channel where the bot is present:
+1. Per-repo per-event route (set via `/set-channel`).
+2. Per-repo default channel (set when linking).
+3. Per-guild default (first channel used when linking any repo).
+4. Skip.
 
+## Dev
+
+```bash
+pip install -r requirements-dev.txt
+pytest
+ruff check src tests
 ```
-/link-repo repo:octocat/hello-world
-/set-channel event:issues channel:#issues
-/set-channel event:pulls  channel:#pull-requests
-/review-reminder mode:enable
-/list-repos
-```
 
-All management commands require **Manage Server** permission.
+SQLite database lives at `./data/repopulse.db` by default. Delete it to wipe all links/routes.
 
----
+## Roadmap
 
-## Built For
+Stuff I'd like to add:
 
-RepoPulse is ideal for:
+- AI PR summaries
+- contributor leaderboards
+- GitHub Actions dashboards
+- analytics / activity metrics
+- multi-repo workspaces
 
-* open-source projects
-* developer communities
-* hackathon teams
-* startup engineering teams
-* Discord coding servers
-* student programming groups
-
----
-
-## Design Philosophy
-
-RepoPulse intentionally avoids becoming a "multi-purpose Discord bot." The project focuses entirely on developer collaboration and repository activity.
-
-Key principles:
-
-* clean architecture
-* modular event handlers
-* minimal setup friction
-* low-noise notifications
-* extensible plugin-style structure
-* production-grade reliability
-
----
-
-## Future Roadmap
-
-Planned future features:
-
-* AI pull request summaries
-* contributor leaderboards
-* advanced reviewer assignment
-* GitHub Actions dashboards
-* deployment notifications
-* issue triaging tools
-* analytics and activity metrics
-* multi-repository workspaces
-
----
-
-## Open Source
-
-RepoPulse is fully open-source and community-driven. Contributions welcome for:
-
-* new GitHub event integrations
-* UI improvements
-* slash commands
-* deployment templates
-* localization
-* performance optimizations
-* documentation improvements
-
-The project aims to become a modern, developer-focused alternative to traditional GitHub notification systems for Discord communities.
+PRs welcome.

@@ -1,9 +1,3 @@
-"""Tests for :mod:`repopulse.embeds`.
-
-We synthesize minimal-but-realistic GitHub webhook payloads. Full schemas
-are documented at https://docs.github.com/en/webhooks/webhook-events-and-payloads.
-"""
-
 from __future__ import annotations
 
 import discord
@@ -27,7 +21,7 @@ def _sender() -> dict:
     }
 
 
-# -- Issues --------------------------------------------------------------------
+# issues ---------------------------------------------------------------------
 
 
 def test_issue_opened_builds_green_embed() -> None:
@@ -80,7 +74,7 @@ def test_issue_unknown_action_is_ignored() -> None:
     assert embeds.build_issue_embed(payload) is None
 
 
-# -- Pull requests -------------------------------------------------------------
+# pull requests --------------------------------------------------------------
 
 
 def _pr(**overrides) -> dict:
@@ -155,7 +149,7 @@ def test_pr_closed_without_merge_is_red() -> None:
     assert embed.color == embeds.COLOR_CLOSED
 
 
-# -- Reviews -------------------------------------------------------------------
+# reviews --------------------------------------------------------------------
 
 
 def test_review_approved_is_green() -> None:
@@ -200,7 +194,7 @@ def test_empty_commented_review_ignored() -> None:
     assert embeds.build_review_embed(payload) is None
 
 
-# -- Push ----------------------------------------------------------------------
+# push -----------------------------------------------------------------------
 
 
 def test_push_builds_description_from_commits() -> None:
@@ -255,7 +249,7 @@ def test_force_push_is_flagged_warning() -> None:
     assert embed.color == embeds.COLOR_WARNING
 
 
-# -- Release -------------------------------------------------------------------
+# release --------------------------------------------------------------------
 
 
 def test_release_published_is_merged_color() -> None:
@@ -296,7 +290,7 @@ def test_prerelease_is_warning() -> None:
     assert embed.color == embeds.COLOR_WARNING
 
 
-# -- Workflow run --------------------------------------------------------------
+# workflow_run ---------------------------------------------------------------
 
 
 def test_workflow_success_is_green() -> None:
@@ -340,7 +334,7 @@ def test_workflow_failure_is_red() -> None:
     assert embed.color == embeds.COLOR_FAILURE
 
 
-# -- Reminder ------------------------------------------------------------------
+# reminder -------------------------------------------------------------------
 
 
 def test_review_reminder_embed_is_warning_colored() -> None:

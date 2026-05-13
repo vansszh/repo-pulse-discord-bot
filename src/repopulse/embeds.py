@@ -1,17 +1,3 @@
-"""Discord embed builders for GitHub webhook events.
-
-Every builder takes the parsed JSON body of a GitHub webhook and returns a
-:class:`discord.Embed`, or ``None`` if the event variant should be ignored.
-
-Design goals:
-
-* Stay under Discord's embed limits (title ≤ 256, description ≤ 4096,
-  field ≤ 1024, total ≤ 6000).
-* Use GitHub-like colors so a glance tells you what happened.
-* Link the title directly to the GitHub URL.
-* Show the author's avatar.
-"""
-
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -21,55 +7,43 @@ import discord
 
 from .utils import truncate
 
-# ---------------------------------------------------------------------------
-# Colors (GitHub-like palette)
-# ---------------------------------------------------------------------------
-
-COLOR_OPEN = discord.Color.from_str("#2ea043")       # green
-COLOR_MERGED = discord.Color.from_str("#8957e5")     # purple
-COLOR_CLOSED = discord.Color.from_str("#cf222e")     # red
-COLOR_DRAFT = discord.Color.from_str("#6e7681")      # gray
-COLOR_COMMENT = discord.Color.from_str("#0969da")    # blue
-COLOR_WARNING = discord.Color.from_str("#bf8700")    # amber
-COLOR_NEUTRAL = discord.Color.from_str("#57606a")    # slate
+# GitHub-like palette.
+COLOR_OPEN = discord.Color.from_str("#2ea043")
+COLOR_MERGED = discord.Color.from_str("#8957e5")
+COLOR_CLOSED = discord.Color.from_str("#cf222e")
+COLOR_DRAFT = discord.Color.from_str("#6e7681")
+COLOR_COMMENT = discord.Color.from_str("#0969da")
+COLOR_WARNING = discord.Color.from_str("#bf8700")
+COLOR_NEUTRAL = discord.Color.from_str("#57606a")
 COLOR_SUCCESS = COLOR_OPEN
 COLOR_FAILURE = COLOR_CLOSED
-
-
-# ---------------------------------------------------------------------------
-# Shared helpers
-# ---------------------------------------------------------------------------
 
 
 def _parse_ts(raw: str | None) -> datetime:
     if not raw:
         return datetime.now(UTC)
     try:
-        # GitHub timestamps are ISO 8601, often ending in "Z".
+        # GitHub timestamps are ISO 8601, usually ending in "Z".
         return datetime.fromisoformat(raw.replace("Z", "+00:00"))
     except ValueError:
         return datetime.now(UTC)
 
 
 def _author(payload: dict[str, Any]) -> tuple[str, str | None, str | None]:
-    """Return ``(name, url, avatar_url)`` for the sender/user of an event."""
     user = payload.get("sender") or payload.get("pusher") or {}
     name = user.get("login") or user.get("name") or "unknown"
     return name, user.get("html_url"), user.get("avatar_url")
 
 
 def _repo_footer(repo: dict[str, Any]) -> str:
-    full = repo.get("full_name") or f"{repo.get('owner', {}).get('login', '?')}/{repo.get('name', '?')}"
-    return full
+    return repo.get("full_name") or f"{repo.get('owner', {}).get('login', '?')}/{repo.get('name', '?')}"
 
 
 def _labels_value(labels: list[dict[str, Any]] | None) -> str | None:
     if not labels:
         return None
     names = [f"`{lbl.get('name', '')}`" for lbl in labels if lbl.get("name")]
-    if not names:
-        return None
-    return truncate(", ".join(names), 1024)
+    return truncate(", ".join(names), 1024) if names else None
 
 
 def _base_embed(
@@ -90,18 +64,11 @@ def _base_embed(
         description=truncate(description, 4000) if description else None,
     )
     embed.set_author(name=name, url=user_url, icon_url=avatar)
-    repo = payload.get("repository") or {}
-    embed.set_footer(text=_repo_footer(repo))
+    embed.set_footer(text=_repo_footer(payload.get("repository") or {}))
     return embed
 
 
-# ---------------------------------------------------------------------------
-# Event builders
-# ---------------------------------------------------------------------------
-
-
 def build_issue_embed(payload: dict[str, Any]) -> discord.Embed | None:
-    """Build an embed for ``issues`` events (opened / closed / reopened)."""
     action = payload.get("action")
     if action not in {"opened", "closed", "reopened"}:
         return None
@@ -113,19 +80,14 @@ def build_issue_embed(payload: dict[str, Any]) -> discord.Embed | None:
     body = issue.get("body") or ""
 
     if action == "opened":
-        verb = "📥 Issue opened"
-        color = COLOR_OPEN
+        verb, color = "📥 Issue opened", COLOR_OPEN
     elif action == "reopened":
-        verb = "🔄 Issue reopened"
-        color = COLOR_OPEN
-    else:  # closed
-        state_reason = issue.get("state_reason")
-        if state_reason == "completed":
-            verb = "✅ Issue closed (completed)"
-            color = COLOR_MERGED
+        verb, color = "🔄 Issue reopened", COLOR_OPEN
+    else:
+        if issue.get("state_reason") == "completed":
+            verb, color = "✅ Issue closed (completed)", COLOR_MERGED
         else:
-            verb = "🚫 Issue closed"
-            color = COLOR_NEUTRAL
+            verb, color = "🚫 Issue closed", COLOR_NEUTRAL
 
     embed = _base_embed(
         title=f"{verb} · #{number} {title}",
@@ -136,18 +98,15 @@ def build_issue_embed(payload: dict[str, Any]) -> discord.Embed | None:
         description=body if action == "opened" else None,
     )
 
-    labels_val = _labels_value(issue.get("labels"))
-    if labels_val:
-        embed.add_field(name="Labels", value=labels_val, inline=False)
-
+    labels = _labels_value(issue.get("labels"))
+    if labels:
+        embed.add_field(name="Labels", value=labels, inline=False)
     return embed
 
 
 def build_pull_request_embed(payload: dict[str, Any]) -> discord.Embed | None:
-    """Build an embed for ``pull_request`` events."""
     action = payload.get("action")
-    interesting = {"opened", "closed", "reopened", "ready_for_review", "review_requested"}
-    if action not in interesting:
+    if action not in {"opened", "closed", "reopened", "ready_for_review", "review_requested"}:
         return None
 
     pr = payload.get("pull_request") or {}
@@ -159,10 +118,7 @@ def build_pull_request_embed(payload: dict[str, Any]) -> discord.Embed | None:
     draft = bool(pr.get("draft"))
 
     if action == "opened":
-        if draft:
-            verb, color = "📝 Draft pull request opened", COLOR_DRAFT
-        else:
-            verb, color = "🔀 Pull request opened", COLOR_OPEN
+        verb, color = ("📝 Draft pull request opened", COLOR_DRAFT) if draft else ("🔀 Pull request opened", COLOR_OPEN)
     elif action == "reopened":
         verb, color = "🔄 Pull request reopened", COLOR_OPEN
     elif action == "ready_for_review":
@@ -172,10 +128,7 @@ def build_pull_request_embed(payload: dict[str, Any]) -> discord.Embed | None:
         verb = f"👀 Review requested from {reviewer}" if reviewer else "👀 Review requested"
         color = COLOR_COMMENT
     elif action == "closed":
-        if merged:
-            verb, color = "🟣 Pull request merged", COLOR_MERGED
-        else:
-            verb, color = "🔴 Pull request closed", COLOR_CLOSED
+        verb, color = ("🟣 Pull request merged", COLOR_MERGED) if merged else ("🔴 Pull request closed", COLOR_CLOSED)
     else:
         return None
 
@@ -188,32 +141,26 @@ def build_pull_request_embed(payload: dict[str, Any]) -> discord.Embed | None:
         description=body if action == "opened" else None,
     )
 
-    # Branch info
     head = (pr.get("head") or {}).get("ref")
     base = (pr.get("base") or {}).get("ref")
     if head and base:
         embed.add_field(name="Branch", value=f"`{head}` → `{base}`", inline=True)
 
-    # File / line stats
     changed = pr.get("changed_files")
-    additions = pr.get("additions")
-    deletions = pr.get("deletions")
     if changed is not None:
         embed.add_field(
             name="Changes",
-            value=f"{changed} file(s) · +{additions or 0} / -{deletions or 0}",
+            value=f"{changed} file(s) · +{pr.get('additions') or 0} / -{pr.get('deletions') or 0}",
             inline=True,
         )
 
-    labels_val = _labels_value(pr.get("labels"))
-    if labels_val:
-        embed.add_field(name="Labels", value=labels_val, inline=False)
-
+    labels = _labels_value(pr.get("labels"))
+    if labels:
+        embed.add_field(name="Labels", value=labels, inline=False)
     return embed
 
 
 def build_review_embed(payload: dict[str, Any]) -> discord.Embed | None:
-    """Build an embed for ``pull_request_review`` events (action=submitted)."""
     if payload.get("action") != "submitted":
         return None
 
@@ -231,13 +178,13 @@ def build_review_embed(payload: dict[str, Any]) -> discord.Embed | None:
         verb, color = "⚠️ Changes requested", COLOR_WARNING
     elif state == "commented":
         if not body.strip():
-            # Empty "commented" reviews are usually noise.
+            # Empty "commented" reviews are usually just noise.
             return None
         verb, color = "💬 Review commented", COLOR_COMMENT
     else:
         return None
 
-    embed = _base_embed(
+    return _base_embed(
         title=f"{verb} on #{number} {pr_title}",
         url=url,
         color=color,
@@ -245,11 +192,9 @@ def build_review_embed(payload: dict[str, Any]) -> discord.Embed | None:
         timestamp=_parse_ts(review.get("submitted_at")),
         description=body or None,
     )
-    return embed
 
 
 def build_push_embed(payload: dict[str, Any]) -> discord.Embed | None:
-    """Build an embed for ``push`` events."""
     commits = payload.get("commits") or []
     ref = payload.get("ref", "")
     branch = ref.rsplit("/", 1)[-1] if ref else "?"
@@ -258,8 +203,6 @@ def build_push_embed(payload: dict[str, Any]) -> discord.Embed | None:
     deleted = bool(payload.get("deleted"))
     compare_url = payload.get("compare")
 
-    # Skip no-op pushes (e.g. tag deletes with no commits) unless they
-    # represent branch lifecycle events.
     if not commits and not (created or deleted):
         return None
 
@@ -279,23 +222,20 @@ def build_push_embed(payload: dict[str, Any]) -> discord.Embed | None:
         sha = (commit.get("id") or "")[:7]
         msg = (commit.get("message") or "").splitlines()[0] if commit.get("message") else ""
         author = (commit.get("author") or {}).get("name") or "unknown"
-        url = commit.get("url")
-        lines.append(f"[`{sha}`]({url}) {truncate(msg, 80)} — *{author}*")
+        lines.append(f"[`{sha}`]({commit.get('url')}) {truncate(msg, 80)} — *{author}*")
     if len(commits) > 10:
         lines.append(f"… and {len(commits) - 10} more")
 
-    embed = _base_embed(
+    return _base_embed(
         title=verb,
         url=compare_url,
         color=color,
         payload=payload,
         description="\n".join(lines) if lines else None,
     )
-    return embed
 
 
 def build_release_embed(payload: dict[str, Any]) -> discord.Embed | None:
-    """Build an embed for ``release`` events (action=published)."""
     if payload.get("action") != "published":
         return None
 
@@ -304,14 +244,13 @@ def build_release_embed(payload: dict[str, Any]) -> discord.Embed | None:
     name = release.get("name") or tag
     url = release.get("html_url")
     body = release.get("body") or ""
-    prerelease = bool(release.get("prerelease"))
 
-    if prerelease:
+    if release.get("prerelease"):
         verb, color = f"🧪 Pre-release `{tag}` published", COLOR_WARNING
     else:
         verb, color = f"🎉 Release `{tag}` published", COLOR_MERGED
 
-    embed = _base_embed(
+    return _base_embed(
         title=f"{verb} — {name}",
         url=url,
         color=color,
@@ -319,11 +258,9 @@ def build_release_embed(payload: dict[str, Any]) -> discord.Embed | None:
         timestamp=_parse_ts(release.get("published_at") or release.get("created_at")),
         description=body or None,
     )
-    return embed
 
 
 def build_workflow_run_embed(payload: dict[str, Any]) -> discord.Embed | None:
-    """Build an embed for ``workflow_run`` events (action=completed)."""
     if payload.get("action") != "completed":
         return None
 
@@ -333,7 +270,7 @@ def build_workflow_run_embed(payload: dict[str, Any]) -> discord.Embed | None:
     branch = run.get("head_branch") or "?"
     url = run.get("html_url")
 
-    status_icons = {
+    icons = {
         "success": ("✅", COLOR_SUCCESS),
         "failure": ("❌", COLOR_FAILURE),
         "cancelled": ("⚪", COLOR_NEUTRAL),
@@ -343,7 +280,7 @@ def build_workflow_run_embed(payload: dict[str, Any]) -> discord.Embed | None:
         "skipped": ("⏭️", COLOR_NEUTRAL),
         "stale": ("💤", COLOR_NEUTRAL),
     }
-    icon, color = status_icons.get(conclusion, ("🏁", COLOR_NEUTRAL))
+    icon, color = icons.get(conclusion, ("🏁", COLOR_NEUTRAL))
 
     embed = _base_embed(
         title=f"{icon} Workflow '{name}' {conclusion or 'completed'} on `{branch}`",
@@ -358,17 +295,14 @@ def build_workflow_run_embed(payload: dict[str, Any]) -> discord.Embed | None:
     if msg:
         embed.add_field(name="Commit", value=truncate(msg, 1024), inline=False)
 
-    event_trigger = run.get("event")
-    if event_trigger:
-        embed.add_field(name="Trigger", value=f"`{event_trigger}`", inline=True)
-
+    if run.get("event"):
+        embed.add_field(name="Trigger", value=f"`{run['event']}`", inline=True)
     return embed
 
 
 def build_review_reminder_embed(
     *, owner: str, name: str, number: int, title: str, url: str, author: str, hours: int
 ) -> discord.Embed:
-    """Built by the background task, not a webhook handler — kept here for symmetry."""
     embed = discord.Embed(
         title=truncate(f"⏰ Reminder: PR #{number} needs review — {title}", 256),
         url=url,

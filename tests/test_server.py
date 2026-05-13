@@ -1,9 +1,3 @@
-"""Tests for :mod:`repopulse.server`.
-
-We use FastAPI's ``TestClient`` (starlette's, under the hood) to exercise the
-HMAC-verified webhook path without starting the bot.
-"""
-
 from __future__ import annotations
 
 import json
@@ -21,9 +15,8 @@ from repopulse.server import create_app
 
 
 class _StubBot:
-    """Minimal stand-in for a discord.Client — the dispatcher never reaches Discord."""
-
-    def get_channel(self, _channel_id: int) -> None:  # pragma: no cover - not hit in unit tests
+    # Stand-in for discord.Client — dispatcher never actually reaches Discord in these tests.
+    def get_channel(self, _channel_id: int) -> None:  # pragma: no cover
         return None
 
     async def fetch_channel(self, _channel_id: int) -> None:  # pragma: no cover

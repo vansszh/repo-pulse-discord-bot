@@ -1,27 +1,3 @@
-"""Async SQLite storage for RepoPulse.
-
-Tables
-------
-``guilds``
-    One row per Discord server (guild). Stores default channel and whether
-    review reminders are enabled.
-
-``linked_repos``
-    (guild_id, owner, name) tuples — which GitHub repos are linked to which
-    Discord server. Each link can also override the default channel and
-    enable/disable review reminders per repo.
-
-``channel_routes``
-    (guild_id, owner, name, event_type) → channel_id overrides. Lets servers
-    route different event categories (issues, pulls, ci, releases) to
-    different channels.
-
-``known_prs``
-    Minimal state about open PRs so the review-reminder background task can
-    decide whether to nudge reviewers. Updated opportunistically as we
-    receive webhook events.
-"""
-
 from __future__ import annotations
 
 import logging
@@ -33,13 +9,8 @@ import aiosqlite
 
 logger = logging.getLogger(__name__)
 
-
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
-
+# Categories exposed to /set-channel. Must stay in sync with the Literal in cogs/management.py.
 EVENT_CATEGORIES = ("issues", "pulls", "reviews", "pushes", "releases", "ci")
-"""Logical channel-routing buckets exposed via ``/set-channel``."""
 
 
 SCHEMA = """
@@ -88,11 +59,6 @@ CREATE TABLE IF NOT EXISTS known_prs (
 """
 
 
-# ---------------------------------------------------------------------------
-# Data classes
-# ---------------------------------------------------------------------------
-
-
 @dataclass(slots=True)
 class LinkedRepo:
     guild_id: int
@@ -124,23 +90,12 @@ class StalePR:
     last_activity_at: datetime
 
 
-# ---------------------------------------------------------------------------
-# Database
-# ---------------------------------------------------------------------------
-
-
 class Database:
-    """Thin async wrapper around an ``aiosqlite`` connection.
-
-    Single long-lived connection. SQLite handles our write volume comfortably
-    and serializing writes through one connection keeps things simple.
-    """
+    """Thin async wrapper around a single aiosqlite connection."""
 
     def __init__(self, path: Path | str) -> None:
         self.path = Path(path)
         self._conn: aiosqlite.Connection | None = None
-
-    # -- lifecycle ------------------------------------------------------------
 
     async def connect(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -161,7 +116,7 @@ class Database:
             raise RuntimeError("Database.connect() must be called before use.")
         return self._conn
 
-    # -- guilds --------------------------------------------------------------
+    # guilds ------------------------------------------------------------
 
     async def upsert_guild(self, guild_id: int, default_channel_id: int | None = None) -> None:
         await self.conn.execute(
@@ -197,7 +152,7 @@ class Database:
             review_reminders=bool(row["review_reminders"]),
         )
 
-    # -- linked repos ---------------------------------------------------------
+    # linked repos ------------------------------------------------------
 
     async def link_repo(
         self,
@@ -246,11 +201,7 @@ class Database:
         ]
 
     async def find_repo_links(self, owner: str, name: str) -> list[LinkedRepo]:
-        """Find all (guild, channel) links for a given GitHub repo.
-
-        Used by the webhook dispatcher to fan out a single GitHub event to
-        every Discord server that has linked this repo.
-        """
+        # Fan-out query used by the webhook dispatcher.
         async with self.conn.execute(
             "SELECT guild_id, owner, name, channel_id FROM linked_repos WHERE owner = ? AND name = ?",
             (owner.lower(), name.lower()),
@@ -266,7 +217,7 @@ class Database:
             for r in rows
         ]
 
-    # -- channel routes -------------------------------------------------------
+    # channel routes ----------------------------------------------------
 
     async def set_channel_route(
         self,
@@ -311,15 +262,7 @@ class Database:
         link: LinkedRepo,
         event_type: str,
     ) -> int | None:
-        """Pick the best channel for ``event_type`` on ``link``.
-
-        Resolution order:
-
-        1. Per-repo per-event route (``channel_routes``).
-        2. Per-repo default channel (``linked_repos.channel_id``).
-        3. Per-guild default channel (``guilds.default_channel_id``).
-        4. ``None`` — nothing configured, skip delivery.
-        """
+        # Fallback chain: per-event route → per-repo default → per-guild default → None.
         route = await self.get_channel_route(link.guild_id, link.owner, link.name, event_type)
         if route is not None:
             return route
@@ -328,7 +271,7 @@ class Database:
         guild = await self.get_guild(link.guild_id)
         return guild.default_channel_id if guild else None
 
-    # -- known PRs ------------------------------------------------------------
+    # known PRs ---------------------------------------------------------
 
     async def upsert_pr(
         self,
@@ -393,7 +336,6 @@ class Database:
         await self.conn.commit()
 
     async def find_stale_prs(self, older_than_hours: int) -> list[StalePR]:
-        """PRs that are open, unreviewed, not reminded yet, and older than the threshold."""
         cutoff = datetime.now(UTC).timestamp() - older_than_hours * 3600
         async with self.conn.execute(
             """

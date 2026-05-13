@@ -1,5 +1,3 @@
-"""General-purpose meta commands: ``/ping`` and ``/help-repopulse``."""
-
 from __future__ import annotations
 
 import discord
@@ -10,8 +8,6 @@ from .. import __version__
 
 
 class MetaCog(commands.Cog):
-    """Health check and help commands, available to everyone."""
-
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
 
@@ -30,8 +26,8 @@ class MetaCog(commands.Cog):
         embed = discord.Embed(
             title="RepoPulse — help",
             description=(
-                "RepoPulse posts real-time GitHub activity from your repositories "
-                "into Discord channels, with clean embeds and per-event routing."
+                "Posts real-time GitHub activity from your repositories into Discord "
+                "channels, with clean embeds and per-event routing."
             ),
             color=discord.Color.blurple(),
         )
@@ -59,9 +55,8 @@ class MetaCog(commands.Cog):
         embed.add_field(
             name="Setup",
             value=(
-                "Add a GitHub webhook pointing at `/github/webhook` on the bot's host, "
-                "using the shared secret configured via `GITHUB_WEBHOOK_SECRET`. "
-                "See the project README for details."
+                "Point a GitHub webhook at `/github/webhook` on the bot's host, "
+                "using the shared secret configured via `GITHUB_WEBHOOK_SECRET`."
             ),
             inline=False,
         )

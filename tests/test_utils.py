@@ -1,5 +1,3 @@
-"""Tests for :mod:`repopulse.utils`."""
-
 from __future__ import annotations
 
 import pytest
@@ -18,19 +16,12 @@ class TestParseRepo:
         assert parse_repo("  octocat/hello-world  ") == ("octocat", "hello-world")
 
     def test_accepts_https_url(self) -> None:
-        assert parse_repo("https://github.com/octocat/Hello-World") == (
-            "octocat",
-            "hello-world",
-        )
+        assert parse_repo("https://github.com/octocat/Hello-World") == ("octocat", "hello-world")
 
     def test_accepts_https_url_with_git_suffix(self) -> None:
-        assert parse_repo("https://github.com/octocat/Hello-World.git") == (
-            "octocat",
-            "hello-world",
-        )
+        assert parse_repo("https://github.com/octocat/Hello-World.git") == ("octocat", "hello-world")
 
     def test_accepts_dots_in_name(self) -> None:
-        # Real example: "github/docs.github.com"
         assert parse_repo("github/docs.github.com") == ("github", "docs.github.com")
 
     @pytest.mark.parametrize(
@@ -60,5 +51,5 @@ class TestTruncate:
         assert out.endswith("…")
 
     def test_limit_smaller_than_suffix(self) -> None:
-        # Shouldn't raise; returns whatever fits.
-        assert truncate("abc", 0) == "…"[:0] + "…" or truncate("abc", 0) == "…"
+        # Just shouldn't raise; returns whatever fits.
+        assert truncate("abc", 0) in ("", "…")

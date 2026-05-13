@@ -1,11 +1,3 @@
-"""Process-level orchestration.
-
-Starts the Discord bot, the FastAPI webhook server (uvicorn), and the
-stale-PR reminder task in a single asyncio event loop. Graceful shutdown
-flows through ``try / finally`` blocks so the SQLite connection is always
-closed cleanly.
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -28,21 +20,18 @@ logger = logging.getLogger(__name__)
 
 
 async def _run_uvicorn(app: Any, host: str, port: int) -> None:
-    """Run uvicorn inside the running asyncio loop."""
     config = uvicorn.Config(
         app=app,
         host=host,
         port=port,
-        log_config=None,     # inherit our logging setup
-        access_log=False,    # keep logs quiet; FastAPI handler already logs deliveries
+        log_config=None,
+        access_log=False,
         lifespan="on",
     )
-    server = uvicorn.Server(config)
-    await server.serve()
+    await uvicorn.Server(config).serve()
 
 
 async def run(settings: Settings | None = None) -> None:
-    """Async entrypoint. Start the bot + server + reminder task."""
     settings = settings or get_settings()
     setup_logging(settings.log_level)
     logger.info("Starting RepoPulse…")
@@ -55,9 +44,7 @@ async def run(settings: Settings | None = None) -> None:
     reminders = ReviewReminderTask(bot=bot, db=db, settings=settings)
     app = create_app(settings=settings, dispatcher=dispatcher)
 
-    bot_task = asyncio.create_task(
-        bot.start(settings.discord_bot_token), name="repopulse-bot"
-    )
+    bot_task = asyncio.create_task(bot.start(settings.discord_bot_token), name="repopulse-bot")
     server_task = asyncio.create_task(
         _run_uvicorn(app, settings.webhook_host, settings.webhook_port),
         name="repopulse-webhook",
@@ -71,16 +58,13 @@ async def run(settings: Settings | None = None) -> None:
         logger.info("Shutdown signal received.")
         stop.set()
 
-    # SIGINT always works; SIGTERM only on POSIX. Best-effort on Windows.
     for sig_name in ("SIGINT", "SIGTERM"):
         sig = getattr(signal, sig_name, None)
         if sig is None:
             continue
-        try:
+        # Windows doesn't support add_signal_handler — KeyboardInterrupt still works.
+        with contextlib.suppress(NotImplementedError, RuntimeError):
             loop.add_signal_handler(sig, _request_stop)
-        except (NotImplementedError, RuntimeError):
-            # Windows doesn't support add_signal_handler — KeyboardInterrupt still works.
-            pass
 
     try:
         done, _ = await asyncio.wait(
@@ -106,12 +90,8 @@ async def run(settings: Settings | None = None) -> None:
 
 
 def main() -> None:
-    """Sync entrypoint for ``python -m repopulse`` and the ``repopulse`` script."""
-    try:
+    with contextlib.suppress(KeyboardInterrupt):
         asyncio.run(run())
-    except KeyboardInterrupt:
-        # asyncio.run already handled cleanup via the finally in run().
-        pass
 
 
 if __name__ == "__main__":

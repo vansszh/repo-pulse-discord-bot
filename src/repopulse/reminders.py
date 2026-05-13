@@ -1,16 +1,3 @@
-"""Background task that posts reminders for stale, unreviewed pull requests.
-
-Runs on a fixed interval (``REVIEW_REMINDER_INTERVAL_MINUTES``). For each open
-PR we have recorded in ``known_prs`` that is:
-
-* older than ``REVIEW_REMINDER_HOURS``, and
-* has no review submitted, and
-* has not been reminded before,
-
-we post a reminder to every guild that linked that repo AND has review
-reminders enabled, in that guild's ``reviews`` channel (or fallback chain).
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -27,21 +14,14 @@ logger = logging.getLogger(__name__)
 
 
 class ReviewReminderTask:
-    """A long-running coroutine that periodically nudges stale PRs."""
+    """Periodically nudges stale, unreviewed PRs."""
 
-    def __init__(
-        self,
-        bot: discord.Client,
-        db: Database,
-        settings: Settings,
-    ) -> None:
+    def __init__(self, bot: discord.Client, db: Database, settings: Settings) -> None:
         self.bot = bot
         self.db = db
         self.settings = settings
         self._task: asyncio.Task[None] | None = None
         self._stop_event = asyncio.Event()
-
-    # -- lifecycle -----------------------------------------------------------
 
     def start(self) -> None:
         if self._task is not None and not self._task.done():
@@ -56,8 +36,6 @@ class ReviewReminderTask:
             with contextlib.suppress(asyncio.CancelledError, Exception):
                 await self._task
 
-    # -- main loop -----------------------------------------------------------
-
     async def _run(self) -> None:
         interval = max(60, self.settings.review_reminder_interval_minutes * 60)
         logger.info(
@@ -65,12 +43,9 @@ class ReviewReminderTask:
             interval, self.settings.review_reminder_hours,
         )
 
-        # Give the bot time to connect and cache guilds before the first sweep.
-        try:
+        # Non-bot clients (tests) won't have wait_until_ready.
+        with contextlib.suppress(AttributeError):
             await self.bot.wait_until_ready()
-        except AttributeError:
-            # Non-bot clients (tests) just skip this wait.
-            pass
 
         while not self._stop_event.is_set():
             try:
@@ -100,8 +75,7 @@ class ReviewReminderTask:
             if await self._post_reminder(link, pr):
                 any_delivered = True
 
-        # Mark as reminded even if nothing was delivered, so we don't hammer
-        # the same PR every tick when nobody has reminders enabled.
+        # Mark reminded regardless of delivery so we don't hammer this PR every tick.
         await self.db.mark_pr_reminded(pr.owner, pr.name, pr.number)
         if any_delivered:
             logger.info("Reminded for %s/%s#%d", pr.owner, pr.name, pr.number)
