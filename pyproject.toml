@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "repopulse"
 version = "0.1.0"
-description = "A modern Discord bot for real-time GitHub repository activity."
+description = "A Discord bot that posts GitHub repository activity into Discord channels."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
@@ -38,9 +38,7 @@ dependencies = [
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
-    "pytest-cov>=4.1",
     "ruff>=0.3",
-    "mypy>=1.8",
 ]
 
 [project.scripts]
@@ -52,9 +50,6 @@ Issues = "https://github.com/vansszh/repo-pulse/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]
-
-[tool.setuptools.package-data]
-repopulse = ["py.typed"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
@@ -72,10 +67,3 @@ select = ["E", "F", "I", "W", "B", "UP", "SIM", "RUF"]
 # RUF001: we use UI emojis intentionally; treating them as "ambiguous" is noise.
 # SIM105: keeping explicit try/except/pass is clearer than contextlib.suppress in a few spots.
 ignore = ["E501", "RUF001", "SIM105"]
-
-[tool.mypy]
-python_version = "3.11"
-strict = false
-ignore_missing_imports = true
-packages = ["repopulse"]
-mypy_path = "src"
