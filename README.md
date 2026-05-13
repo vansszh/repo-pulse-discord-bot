@@ -7,7 +7,7 @@ Built because most GitHub→Discord integrations I've tried are either too noisy
 ## What it does
 
 - Listens to GitHub webhooks and forwards events to Discord.
-- One bot process serves many servers — each server links its own repos.
+- One bot process serves many servers - each server links its own repos.
 - Different event types can go to different channels (issues → `#issues`, PRs → `#pull-requests`, etc.).
 - Posts a reminder when a PR sits unreviewed for too long.
 
@@ -39,13 +39,13 @@ Python 3.11+.
 
 ## Setup
 
-1. **Discord** — create an app at <https://discord.com/developers/applications>, add a bot, copy the token. Invite URL needs `bot` and `applications.commands` scopes.
-2. **GitHub webhook** — on the repo: Settings → Webhooks → Add webhook.
+1. **Discord** - create an app at <https://discord.com/developers/applications>, add a bot, copy the token. Invite URL needs `bot` and `applications.commands` scopes.
+2. **GitHub webhook** - on the repo: Settings → Webhooks → Add webhook.
    - Payload URL: `https://your-host/github/webhook`
    - Content type: `application/json`
    - Secret: any random string (use the same value for `GITHUB_WEBHOOK_SECRET`)
    - Events: pick what you want, or "Send me everything".
-3. **Env** — copy `.env.example` to `.env` and fill in at least `DISCORD_BOT_TOKEN` and `GITHUB_WEBHOOK_SECRET`.
+3. **Env** - copy `.env.example` to `.env` and fill in at least `DISCORD_BOT_TOKEN` and `GITHUB_WEBHOOK_SECRET`.
 
 ## Run
 
